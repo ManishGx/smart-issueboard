@@ -2,6 +2,8 @@ import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase/config";
 import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -49,7 +51,8 @@ function Login() {
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
-      <p> Don’t have an account? <a href="/signup">Signup here</a>
+      <p> Don’t have an account? <Link to="/signup">Signup here</Link>
+
 </p>
 
     </div>
