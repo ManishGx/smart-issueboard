@@ -6,10 +6,10 @@ It allows users to create, view, filter, and manage issues with authentication, 
 The project focuses on **real-world problem solving**, **clean architecture**, and **practical decision-making** rather than overengineering.
 
 ---
-
 ## 🚀 Live Demo
 
-👉 *(Add your Vercel deployment link here)*
+🔗 **Deployed URL:**  
+https://smart-issueboard-five.vercel.app/
 
 ---
 
