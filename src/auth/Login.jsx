@@ -48,6 +48,10 @@ function Login() {
       </form>
 
       {error && <p style={{ color: "red" }}>{error}</p>}
+
+      <p> Don’t have an account? <a href="/signup">Signup here</a>
+</p>
+
     </div>
   );
 }

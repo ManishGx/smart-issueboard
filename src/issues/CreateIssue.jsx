@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   collection,
   addDoc,
@@ -8,57 +8,81 @@ import {
 import { auth, db } from "../firebase/config";
 
 function CreateIssue() {
+  const MAX_TITLE = 100;
+  const MAX_DESC = 1000;
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("Low");
   const [assignedTo, setAssignedTo] = useState("");
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState(""); // 'success' | 'error'
   const [existingIssues, setExistingIssues] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmOverride, setConfirmOverride] = useState(false);
 
-  // 🔹 Fetch existing issues once
+  // Fetch existing issues once
   useEffect(() => {
     const fetchIssues = async () => {
       const snapshot = await getDocs(collection(db, "issues"));
-      const issues = snapshot.docs.map((doc) => doc.data());
+      const issues = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setExistingIssues(issues);
     };
 
     fetchIssues();
   }, []);
 
-  // 🔹 Simple similarity check
-  const isSimilarIssue = (newTitle) => {
-    const stopWords = ["for", "the", "is", "to", "and", "a", "of", "in"];
-    const newWords = newTitle
-  .toLowerCase()
-  .split(" ")
-  .filter(word => !stopWords.includes(word));
+  const stopWords = ["for", "the", "is", "to", "and", "a", "of", "in", "on", "with", "issue"];
 
+  const parseWords = (text) =>
+    text
+      .toLowerCase()
+      .split(/\s+/)
+      .map((w) => w.replace(/[^a-z0-9]/g, ""))
+      .filter((w) => w && !stopWords.includes(w));
 
-    return existingIssues.some((issue) => {
-      const existingWords = issue.title
-  .toLowerCase()
-  .split(" ")
-  .filter(word => !stopWords.includes(word));
-
-      const commonWords = newWords.filter((word) =>
-        existingWords.includes(word)
-      );
-      return commonWords.length >= 2;
+  const getSimilarMatches = (newTitle) => {
+    const newWords = parseWords(newTitle);
+    if (!newWords.length) return [];
+    return existingIssues.filter((issue) => {
+      const existingWords = parseWords(issue.title || "");
+      const common = newWords.filter((w) => existingWords.includes(w));
+      return common.length >= 2;
     });
   };
+
+  const similarMatches = useMemo(() => getSimilarMatches(title), [title, existingIssues]);
+
+  const validate = () => {
+    const errors = {};
+    if (title.trim().length < 5) errors.title = "Title should be at least 5 characters.";
+    if (title.length > MAX_TITLE) errors.title = `Title must be <= ${MAX_TITLE} characters.`;
+    if (description.trim().length < 10) errors.description = "Please add more detail to the description.";
+    if (description.length > MAX_DESC) errors.description = `Description must be <= ${MAX_DESC} characters.`;
+    return errors;
+  };
+
+  const errors = validate();
+  const isFormValid = Object.keys(errors).length === 0 && title.trim() && description.trim() && (!similarMatches.length || confirmOverride);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage("");
+    setMessageType("");
 
-    // 🔥 Similar issue detection
-    if (isSimilarIssue(title)) {
-      const confirmCreate = window.confirm(
-        "Similar issues already exist. Are you sure you want to create a new one?"
-      );
-      if (!confirmCreate) return;
+    if (similarMatches.length && !confirmOverride) {
+      setMessage("Similar issues found; please confirm to create anyway.");
+      setMessageType("error");
+      return;
     }
+
+    if (!isFormValid) {
+      setMessage("Fix validation errors before submitting.");
+      setMessageType("error");
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
       await addDoc(collection(db, "issues"), {
@@ -67,62 +91,124 @@ function CreateIssue() {
         priority,
         status: "Open",
         assignedTo,
-        createdBy: auth.currentUser.email,
+        createdBy: auth.currentUser?.email || "anonymous",
         createdAt: serverTimestamp(),
       });
 
       setMessage("Issue created successfully ✅");
+      setMessageType("success");
 
       setTitle("");
       setDescription("");
       setPriority("Low");
       setAssignedTo("");
+      setConfirmOverride(false);
+
+      setTimeout(() => {
+        setMessage("");
+        setMessageType("");
+      }, 3500);
     } catch (error) {
       setMessage("Error creating issue ❌");
+      setMessageType("error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div>
+    <div className="create-issue-card" aria-live="polite">
       <h3>Create Issue</h3>
 
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-        <br />
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="form-row">
+          <label className="field-label" htmlFor="title">
+            Title <span className="char-count">{title.length}/{MAX_TITLE}</span>
+          </label>
+          <input
+            id="title"
+            type="text"
+            placeholder="Short, descriptive title"
+            value={title}
+            maxLength={MAX_TITLE}
+            onChange={(e) => setTitle(e.target.value)}
+            aria-describedby="title-desc"
+            required
+          />
+          <div id="title-desc" className="hint">{errors.title || "Keep it short and descriptive."}</div>
+        </div>
 
-        <textarea
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          required
-        />
-        <br />
+        <div className="form-row">
+          <label className="field-label" htmlFor="description">
+            Description <span className="char-count">{description.length}/{MAX_DESC}</span>
+          </label>
+          <textarea
+            id="description"
+            placeholder="Describe steps to reproduce, expected vs actual behaviour, screenshots, logs..."
+            value={description}
+            maxLength={MAX_DESC}
+            onChange={(e) => setDescription(e.target.value)}
+            aria-describedby="desc-desc"
+            rows={6}
+            required
+          />
+          <div id="desc-desc" className="hint">{errors.description || "Include enough detail so someone else can reproduce the issue."}</div>
+        </div>
 
-        <select value={priority} onChange={(e) => setPriority(e.target.value)}>
-          <option>Low</option>
-          <option>Medium</option>
-          <option>High</option>
-        </select>
-        <br />
+        <div className="form-row">
+          <label className="field-label" htmlFor="priority">Priority</label>
+          <select id="priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <option>Low</option>
+            <option>Medium</option>
+            <option>High</option>
+          </select>
+        </div>
 
-        <input
-          type="text"
-          placeholder="Assigned To (email or name)"
-          value={assignedTo}
-          onChange={(e) => setAssignedTo(e.target.value)}
-        />
-        <br />
+        <div className="form-row">
+          <label className="field-label" htmlFor="assignedTo">Assigned To</label>
+          <input
+            id="assignedTo"
+            type="text"
+            placeholder="Email or team member name (optional)"
+            value={assignedTo}
+            onChange={(e) => setAssignedTo(e.target.value)}
+          />
+        </div>
 
-        <button type="submit">Create Issue</button>
+        {similarMatches.length > 0 && (
+          <div className="similar-box" role="alert" aria-live="assertive">
+            <strong>Similar issues found ({similarMatches.length})</strong>
+            <ul>
+              {similarMatches.slice(0, 5).map((m) => (
+                <li key={m.id}>{m.title} <span className="hint">— {m.description?.slice(0,120)}</span></li>
+              ))}
+            </ul>
+
+            <label style={{display: "block", marginTop: 8}}>
+              <input
+                type="checkbox"
+                checked={confirmOverride}
+                onChange={(e) => setConfirmOverride(e.target.checked)}
+              /> I understand and want to create a new issue anyway
+            </label>
+          </div>
+        )}
+
+        <div className="button-row">
+          <button type="submit" disabled={!isFormValid || isSubmitting}>
+            {isSubmitting ? "Creating..." : "Create Issue"}
+          </button>
+          <button type="button" onClick={() => { setTitle(""); setDescription(""); setPriority("Low"); setAssignedTo(""); setConfirmOverride(false); setMessage(""); setMessageType(""); }}>
+            Reset
+          </button>
+        </div>
       </form>
 
-      {message && <p>{message}</p>}
+      {message && (
+        <div className={messageType === "success" ? "message-success" : "message-error"} role="status">
+          {message}
+        </div>
+      )}
     </div>
   );
 }

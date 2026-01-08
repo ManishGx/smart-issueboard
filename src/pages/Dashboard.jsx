@@ -13,25 +13,26 @@ function Dashboard() {
     navigate("/");
   };
 
-  return (
-    <div>
-      <h2>Dashboard</h2>
+ return (
+  <div className="dashboard">
+    <h2>Dashboard</h2>
 
-      <p>
-        Logged in as: <strong>{user?.email}</strong>
-      </p>
+    <p>
+      Logged in as: <strong>{user?.email}</strong>
+    </p>
 
-      <button onClick={handleLogout}>Logout</button>
+    <button onClick={handleLogout}>Logout</button>
 
-      <hr />
+    <hr />
 
-      <CreateIssue />
+    <CreateIssue />
 
-      <hr />
+    <hr />
 
-      <IssueList />
-    </div>
-  );
+    <IssueList />
+  </div>
+);
+
 }
 
 export default Dashboard;
